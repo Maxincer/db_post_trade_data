@@ -4,10 +4,14 @@ todo list
 3. 策略相关...分开
 4. log 打不开？
 2. secloan字段精确化
+
+# todo
+1. refactor
+    1. 简化、改名与注释
 """
+
 import pandas as pd
 import pymongo
-# from WindPy import w
 from trader_v1 import Trader
 import codecs
 import threading
@@ -16,17 +20,12 @@ from xlrd import open_workbook
 import datetime
 import time
 import functools
-# import warnings
 import schedule
 import logging
 from logging.handlers import RotatingFileHandler
 from stock_utils import ID2Source, get_sectype_from_code
-# import orjson
-# import redis
 
-# shift ctrl + a 搜索所有功能
-client_local_main = pymongo.MongoClient(port=27017, host='localhost',
-                                        username='admin', password='Ms123456')
+client_local_main = pymongo.MongoClient(port=27017, host='localhost', username='admin', password='Ms123456')
 col_global_var = client_local_main['global_var']['exposure_monitoring']
 
 # 交易日人判断
@@ -132,7 +131,6 @@ def run_process(func):
                     else:
                         print(self.str_day)
                         time.sleep(60*60)
-
             else:
                 raise ValueError('今天不是交易日')     # 睡6小时
     return wrapper
@@ -377,7 +375,7 @@ class ReadRaw:     # 包含post
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
-                        logger_expo.warning('读取空白文件%s'%fpath)
+                        logger_expo.warning('读取空白文件%s' % fpath)
                     else:
                         list_keys = list_datalines[0].strip().split(',')
                     for dataline in list_datalines[1:]:
@@ -395,7 +393,7 @@ class ReadRaw:     # 包含post
                         with codecs.open(fpath_, 'rb', 'gbk') as f:
                             list_datalines = f.readlines()
                             if len(list_datalines) == 0:
-                                logger_expo.warning('读取空白文件%s'%fpath_)
+                                logger_expo.warning('读取空白文件%s' % fpath_)
                             else:
                                 list_keys = list_datalines[0].strip().split(',')
                             for dataline in list_datalines[1:]:
@@ -2757,7 +2755,6 @@ class Exposure:
             self.db_trddata['trade_exposure_by_acctid'].delete_many({'DataDate': self.str_day, 'UpdateTime': self.record_position_time})
             self.db_trddata['trade_exposure_by_acctid'].insert_many(list_dict_acct_exposure)
             self.db_trddata['trade_exposure_by_prdcode'].insert_many(list_dict_prdcode_exposure)
-
         return
 
     def run(self):

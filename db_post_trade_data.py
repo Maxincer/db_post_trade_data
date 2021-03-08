@@ -1,22 +1,37 @@
 """
-1. 生成清算后数据，上传至数据库
-2. 日更新，
+Note:
+    1. 输入数据的地址统一为七类, 空缺的位置为空:
+        DataFilePath = [fund, holding, order, short_position, public_security_loan, private_security_loan, jgd]
+        PostTradeDataFilePath = [fund, holding, order, short_position, public_security_loan, private_security_loan, jgd]
+    2. TH改进算法: 读一次数据，减少冗余查询次数，大幅缩短运行时间。
+        1. 对相同的 datafilepath 分组，读一次。basic info 里读取文件的地址一样归类，很多账户都在一个文件里，以避免内存的冗余占用，核心。
+    3. 此次改动将从藕老师处得到的期货端数据直接作为raw data 入库， 对原来future 与 stock分开的情况进行合并处理
 
+Abbr:
+    1. rdct, raw_data_content_type: content type of raw data, 依据源数据内容划分的数据表名， 特指:
+        [fund, holding, order, short_position, public_security_loan, private_security_loan, jgd]
+    2. kqzj,  可取资金
+
+Todo:
+    1. post trade data, 程序 - 日期更改， 改两个文件: 1. 写入的脚本， 2.读取的脚本
+    2. patch data 添加
+    3. 期货数据清算后数据？
 """
 import codecs
 from datetime import datetime
 import logging
 from logging.handlers import RotatingFileHandler
 
-import pandas as pd
 from openpyxl import load_workbook
+import pandas as pd
 from xlrd import open_workbook
 
 from globals import Globals
 
+# 设置log
 logger_expo = logging.getLogger()
 logger_expo.setLevel(logging.DEBUG)
-fh = RotatingFileHandler('data/log/post_trade_data.log', mode='w', maxBytes=2 * 1024, backupCount=0)
+fh = RotatingFileHandler('data/log/post_trade_data.log', mode='w', maxBytes=2*1024, backupCount=0)
 fh.setLevel(logging.DEBUG)
 fh.setFormatter(logging.Formatter('%(asctime)s - line:%(lineno)d - %(levelname)s: %(message)s'))
 logger_expo.addHandler(fh)
@@ -25,6 +40,11 @@ logger_expo.addHandler(fh)
 class UpdatePostTradeData:
     def __init__(self):
         self.gl = Globals()
+        df_acctinfo = pd.DataFrame(
+            self.gl.col_acctinfo.find({'DataDate': self.gl.str_last_trddate, 'DataDownloadMark': 1}, {'_id': 0})
+        )
+        df_acctinfo = df_acctinfo.set_index('AcctIDByMXZ')
+        self.dict_acctidbymxz2acctinfo = df_acctinfo.to_dict()
         self.list_warn = []
 
     def read_rawdata_from_trdclient(self, fpath, sheet_name, data_source_type, accttype, dict_dldfilter2acctidbymxz):
@@ -233,7 +253,7 @@ class UpdatePostTradeData:
                     with codecs.open(fpath_, 'rb', 'gbk') as f:
                         list_datalines = f.readlines()
                         if len(list_datalines) == 0:
-                            logger_expo.warning('读取空白文件%s'%fpath_)
+                            logger_expo.warning('读取空白文件%s' % fpath_)
                         else:
                             list_keys = list_datalines[0].strip().split(',')
                         for dataline in list_datalines[1:]:
@@ -964,67 +984,59 @@ class UpdatePostTradeData:
         return list_ret
 
     def update_rawdata(self):
-        """
-        2. 定义DataFilePath = ['fpath_fund_data'(source), 'fpath_holding_data'(source), 'fpath_trdrec_data(source)',]
-        3. acctinfo数据库中DataFilePath存在文件路径即触发文件数据的上传。
-        4. 添加：融券未平仓合约数据的上传
-        """
-        dict_sheet_name2col_rawdata = {
-            'fund': self.gl.db_posttrddata['post_trade_raw_data_fund'],
-            'holding': self.gl.db_posttrddata['post_trade_raw_data_holding'],
-            'short_position': self.gl.db_posttrddata['post_trade_raw_data_short_position']
+        dict_raw_data_content_type2col_posttrd_rawdata = {
+            'fund': self.gl.col_posttrd_rawdata_fund,
+            'holding': self.gl.col_posttrd_rawdata_holding,
+            'short_position': self.gl.col_posttrd_rawdata_short_position,
         }
 
-        # Step1: 相同datafilepath一起读, basic info 里读取文件的地址一样归类，很多账户都在一个文件里，以避免内存的冗余占用，必要
-        dict_filepath2acct = {}
-        for _ in self.gl.col_acctinfo.find({'DataDate': self.gl.str_today, 'DataDownloadMark': 1}):
-            if _['StrategiesAllocationByAcct']:
-                list_strategies = _['StrategiesAllocationByAcct'].split(';')
-                if 'AutoT0_IF' in list_strategies:  # todo 先只处理AutoT0
-                    datafilepath = _['PostTradeDataFilePath']
-                    if datafilepath:
-                        if 'DownloadDataFilter' in _ and _['DownloadDataFilter']:
-                            dlddata_filter = _['DownloadDataFilter']
-                        else:
-                            dlddata_filter = _['AcctIDByBroker']
+        # 归集fpath
+        dict_fpath_posttrd_rawdata2acctinfo = {}
+        for dict_acctinfo in self.gl.col_acctinfo.find({'DataDate': self.gl.str_last_trddate, 'DataDownloadMark': 1}):
+            fpath_posttrd_rawdata = dict_acctinfo['PostTradeDataFilePath']
+            if 'DownloadDataFilter' in dict_acctinfo and dict_acctinfo['DownloadDataFilter']:
+                dlddata_filter = dict_acctinfo['DownloadDataFilter']
+            else:
+                dlddata_filter = dict_acctinfo['AcctIDByBroker']
 
-                        if datafilepath in dict_filepath2acct:
-                            dict_filepath2acct[datafilepath].update(
-                                {
-                                    dlddata_filter: _['AcctIDByMXZ'],
-                                    'AcctType': _['AcctType'],
-                                    'DataSourceType': _['DataSourceType']
-                                }
-                            )
-                        else:
-                            dict_filepath2acct[datafilepath] = {
-                                dlddata_filter: _['AcctIDByMXZ'],
-                                'AcctType': _['AcctType'],
-                                'DataSourceType': _['DataSourceType']
-                            }
+            if fpath_posttrd_rawdata in dict_fpath_posttrd_rawdata2acctinfo:
+                dict_fpath_posttrd_rawdata2acctinfo[fpath_posttrd_rawdata].update(
+                    {
+                        dlddata_filter: dict_acctinfo['AcctIDByMXZ'],
+                        'AcctType': dict_acctinfo['AcctType'],
+                        'DataSourceType': dict_acctinfo['DataSourceType']
+                    }
+                )
 
-        # Step2: 全部存成一个list，只上传一遍，提高性能. (TH: 遍历的是数据地址的集合)
+            else:
+                dict_fpath_posttrd_rawdata2acctinfo[fpath_posttrd_rawdata] = {
+                    dlddata_filter: dict_acctinfo['AcctIDByMXZ'],
+                    'AcctType': dict_acctinfo['AcctType'],
+                    'DataSourceType': dict_acctinfo['DataSourceType']
+                }
+
+        # 遍历fpath
         dict_list_upload_recs = {'fund': [], 'holding': [], 'order': [], 'short_position': []}
-        for datafilepath in dict_filepath2acct:
-            dict_acctinfo = dict_filepath2acct[datafilepath]
-            list_fpath_data = datafilepath[1:-1].split(',')
+        for fpath_posttrd_rawdata in dict_fpath_posttrd_rawdata2acctinfo:
+            dict_acctinfo = dict_fpath_posttrd_rawdata2acctinfo[fpath_posttrd_rawdata]
+            list_fpath_data = fpath_posttrd_rawdata[1:-1].split(',')
             data_source_type = dict_acctinfo["DataSourceType"]
             accttype = dict_acctinfo['AcctType']
-            dict_filter2acctidbymxz = dict_acctinfo.copy()  # dlddata_filter: acctidbymxz
-            del dict_filter2acctidbymxz['AcctType']
-            del dict_filter2acctidbymxz['DataSourceType']
+            dict_dldfilter2acctidbymxz = dict_acctinfo.copy()  # dlddata_filter: acctidbymxz
+            del dict_dldfilter2acctidbymxz['AcctType']
+            del dict_dldfilter2acctidbymxz['DataSourceType']
 
             for i in range(4):  # 清算后批量上传的类型暂定仅有4种
                 fpath_post_trddata = list_fpath_data[i]
                 if fpath_post_trddata == '':
                     continue
-                sheet_name = ['fund', 'holding', 'order', 'short_position'][i]
+                raw_data_content_type = ['fund', 'holding', 'order', 'short_position'][i]
 
-                if sheet_name in ['order']:
+                if raw_data_content_type in ['order']:
                     continue
 
                 list_dicts_rec = self.read_rawdata_from_trdclient(
-                    fpath_post_trddata, sheet_name, data_source_type, accttype, dict_filter2acctidbymxz
+                    fpath_post_trddata, raw_data_content_type, data_source_type, accttype, dict_dldfilter2acctidbymxz
                 )
 
                 for dict_rec in list_dicts_rec:
@@ -1033,17 +1045,20 @@ class UpdatePostTradeData:
                     dict_rec['DataSourceType'] = data_source_type
 
                 if list_dicts_rec:
-                    dict_list_upload_recs[sheet_name] += list_dicts_rec
+                    dict_list_upload_recs[raw_data_content_type] += list_dicts_rec
 
-        for sheet_name in dict_sheet_name2col_rawdata:
-            if dict_list_upload_recs[sheet_name]:
-                dict_sheet_name2col_rawdata[sheet_name].delete_many({'DataDate': self.gl.str_last_trddate})
-                dict_sheet_name2col_rawdata[sheet_name].insert_many(dict_list_upload_recs[sheet_name])
+        for raw_data_content_type in dict_raw_data_content_type2col_posttrd_rawdata:
+            if dict_list_upload_recs[raw_data_content_type]:
+                dict_raw_data_content_type2col_posttrd_rawdata[raw_data_content_type].delete_many(
+                    {'DataDate': self.gl.str_last_trddate}
+                )
+                dict_raw_data_content_type2col_posttrd_rawdata[raw_data_content_type].insert_many(
+                    dict_list_upload_recs[raw_data_content_type]
+                )
+        print('Update raw data finished.')
 
     def formulate_raw_data(self, acctidbymxz, accttype, sheet_type, raw_list):
-        # todo 此处需添加patch data
         list_dicts_fmtted = []
-
         if accttype in ['c', 'm']:
             # ---------------  FUND 相关列表  ---------------------
             # 净资产 = 总资产-总负债 = NetAsset
@@ -1065,9 +1080,9 @@ class UpdatePostTradeData:
             # ---------------  Security 相关列表  ---------------------
             list_fields_secid = ['代码', '证券代码', 'stock_code', 'stkcode']
             list_fields_symbol = ['证券名称', 'stock_name', '股票名称', '名称']
-            list_fields_shareholder_acctid = ['股东帐户', '股东账号', '股东代码']
+            list_fields_shareholder_acctid = ['股东帐户', '股东账号', '股东代码', '股东账户']
             list_fields_exchange = ['市场代码', '交易市场', '交易板块', '板块', '交易所', '交易所名称', '交易市场',
-                                    'exchange_type', 'market']
+                                    'exchange_type', 'market', '市场类型']
 
             # 有优先级别的列表
             list_fields_longqty = [
@@ -1167,7 +1182,6 @@ class UpdatePostTradeData:
 
             if sheet_type == 'fund':  # cash
                 list_dicts_fund = raw_list
-                # print(list_dicts_fund)
                 if list_dicts_fund is None:
                     list_dicts_fund = []
                 for dict_fund in list_dicts_fund:
@@ -1186,9 +1200,9 @@ class UpdatePostTradeData:
                     for field_af in list_fields_af:
                         if field_af in dict_fund:
                             avlfund = float(dict_fund[field_af])
-                            # todo patchdata fund 处理 有的券商负债的券不一样
                             flag_check_new_name = False
-                    err = 'unknown available_fund name %s'%data_source
+                    err = 'unknown available_fund name %s' % data_source
+
                     if flag_check_new_name:
                         if err not in self.list_warn:
                             self.list_warn.append(err)
@@ -1201,7 +1215,8 @@ class UpdatePostTradeData:
                             if field_ttasset in dict_fund:
                                 ttasset = float(dict_fund[field_ttasset])
                                 flag_check_new_name = False
-                        err = 'unknown total asset name %s'%data_source
+                        err = 'unknown total asset name %s' % data_source
+
                         if flag_check_new_name:
                             if data_source not in ['gy_htpb', 'gs_htpb']:
                                 if err not in self.list_warn:
@@ -1217,6 +1232,7 @@ class UpdatePostTradeData:
                                 mktvalue = float(dict_fund[field_mktv])
                                 flag_check_new_name = False
                         err = 'unknown total market value name %s'%data_source
+
                         if flag_check_new_name:
                             if data_source not in ['gtja_pluto']:
                                 if err not in self.list_warn:
@@ -1356,6 +1372,7 @@ class UpdatePostTradeData:
                                     logger_expo.debug((err, dict_holding))
                             flag_check_new_name = False
                             break
+
                     err = 'unknown security source name %s' % data_source
                     if flag_check_new_name:
                         if secid[0] in ['6']:
@@ -1404,7 +1421,6 @@ class UpdatePostTradeData:
                         close = 0
                     longamt = longqty * close
 
-
                     dict_holding_fmtted = {
                         'DataDate': self.gl.str_last_trddate,
                         'AcctIDByMXZ': acctidbymxz,
@@ -1415,10 +1431,7 @@ class UpdatePostTradeData:
                         'Symbol': symbol,
                         'SecurityIDSource': secidsrc,
                         'LongQty': longqty,
-                        'ShortQty': 0,
                         'LongAmt': longamt,
-                        'ShortAmt': 0,
-                        'NetAmt': None
                     }
                     list_dicts_fmtted.append(dict_holding_fmtted)
 
@@ -1466,8 +1479,8 @@ class UpdatePostTradeData:
                         if field_exchange in dict_secloan:
                             try:
                                 if data_source in dict_ambigu_secidsrc:
-                                    digit_exchange = dict_secloan[field_exchange]
-                                    secidsrc = dict_ambigu_secidsrc[data_source][digit_exchange]
+                                    str_digit_exchange = str(dict_secloan[field_exchange])
+                                    secidsrc = dict_ambigu_secidsrc[data_source][str_digit_exchange]
                                 else:
                                     exchange = dict_secloan[field_exchange]
                                     secidsrc = dict_exchange2secidsrc[exchange]
@@ -1489,14 +1502,14 @@ class UpdatePostTradeData:
                         if err not in self.list_warn:
                             self.list_warn.append(err)
                             print(err)
-                            logger_expo.warning(err)
+                            logger_expo.warning(err, dict_secloan)
 
                     flag_check_new_name = True
                     for field_symbol in list_fields_symbol:
                         if field_symbol in dict_secloan:
                             symbol = str(dict_secloan[field_symbol])
                             flag_check_new_name = False
-                    err = 'unknown field symbol name %s'%data_source
+                    err = 'unknown field symbol name %s' % data_source
                     if flag_check_new_name:
                         if err not in self.list_warn:
                             self.list_warn.append(err)
@@ -1532,40 +1545,12 @@ class UpdatePostTradeData:
                         if field_sernum in dict_secloan:
                             sernum = str(dict_secloan[field_sernum])
                             flag_check_new_name = False
-                    err = 'unknown field serum name %s'%data_source
+                    err = 'unknown field serum name %s' % data_source
                     if flag_check_new_name:
                         if err not in self.list_warn:
                             self.list_warn.append(err)
                             print(err, dict_secloan)
                             logger_expo.debug((err, dict_secloan))
-
-                    # flag_check_new_name = True
-                    # for field_contractstatus in list_fields_contractstatus:
-                    #     if field_contractstatus in dict_secloan:
-                    #         contractstatus = str(dict_secloan[field_contractstatus])
-                    #         if contractstatus in dict_contractstatus_fmt:
-                    #             contractstatus = dict_contractstatus_fmt[contractstatus]
-                    #         else:
-                    #             logger_expo.debug('Unknown contractstatus %s'%contractstatus)
-                    #         # if contractstatus is None:
-                    #         #     raise Exception('During Clearing, we can not have ambiguous status in the compact')
-                    #         flag_check_new_name = False
-                    #
-                    # if flag_check_new_name:
-                    #     logger_expo.debug(('unknown field_contractstatus name', dict_secloan))
-
-                    # flag_check_new_name = True
-                    # for field_contracttype in list_fields_contracttype:
-                    #     if field_contracttype in dict_secloan:
-                    #         contracttype = str(dict_secloan[field_contracttype])
-                    #         if contracttype in dict_contracttype_fmt:
-                    #             contracttype = dict_contracttype_fmt[contracttype]
-                    #         else:
-                    #             logger_expo.debug('Unknown contractstatus %s'%contracttype)
-                    #         flag_check_new_name = False
-                    # if flag_check_new_name:
-                    #     if data_source != 'hait_ehfz_api':
-                    #         logger_expo.debug(('unknown field_contracttype name', dict_secloan))
 
                     flag_check_new_name = True
                     for field_opdate in list_fields_opdate:
@@ -1582,14 +1567,14 @@ class UpdatePostTradeData:
                             if datetime_obj:
                                 opdate = datetime_obj.strftime('%Y%m%d')
                             else:
-                                err = 'Unrecognized trade date format %s'%data_source
+                                err = 'Unrecognized trade date format %s' % data_source
                                 if err not in self.list_warn:
                                     self.list_warn.append(err)
                                     print(err, dict_secloan)
                                     logger_expo.debug((err, dict_secloan))
 
                     if flag_check_new_name:
-                        err = 'unknown field opdate name %s'%data_source
+                        err = 'unknown field opdate name %s' % data_source
                         if err not in self.list_warn:
                             self.list_warn.append(err)
                             print(err, dict_secloan)
@@ -1601,16 +1586,20 @@ class UpdatePostTradeData:
                             compositesrc = str(dict_secloan[field_compositesrc])
                             flag_check_new_name = False
                     if flag_check_new_name and list_fields_compositesrc:
-                        err = 'unknown field_compositesrc name %s'%data_source
+                        err = 'unknown field_compositesrc name %s' % data_source
                         if err not in self.list_warn:
                             self.list_warn.append(err)
                             print(err, dict_secloan)
                             logger_expo.debug((err, dict_secloan))
 
-                    # print(secidsrc)
                     windcode_suffix = {'SZSE': '.SZ', 'SSE': '.SH'}[secidsrc]
                     windcode = secid + windcode_suffix
                     sectype = self.gl.get_mingshi_sectype_from_code(windcode)
+                    if sectype != 'IrrelevantItem':
+                        close = self.gl.dict_fmtted_wssdata_last_trddate['Close'][windcode]
+                    else:
+                        close = 0
+                    shortamt = shortqty * close
 
                     dict_secloan_fmtted = {
                         'DataDate': self.gl.str_last_trddate,
@@ -1621,15 +1610,16 @@ class UpdatePostTradeData:
                         'Symbol': symbol,
                         'SecurityIDSource': secidsrc,
                         'SerialNumber': sernum,
-                        'OpenPositionDate': opdate,  # = tradeDate？loan是交易吗？感觉FIX里是
+                        'OpenPositionDate': opdate,
                         'ContractStatus': contractstatus,
                         'ContractType': contracttype,
                         'ContractQty': contractqty,
                         'CompositeSource': compositesrc,
                         'ShortQty': shortqty,
-                        'ShortAmt': None
+                        'ShortAmt': shortamt
                     }
                     list_dicts_fmtted.append(dict_secloan_fmtted)
+
             else:
                 raise ValueError('Unknown f_h_o_s_mark')
 
@@ -1652,67 +1642,56 @@ class UpdatePostTradeData:
                 }
                 list_dicts_fmtted.append(dict_future_fund_fmtted)
             # 期货holding直接放到 position里
-
         else:
             logger_expo.debug('Unknown account type in basic account info.')
         return list_dicts_fmtted
 
     def update_fmtdata(self):
-        # todo 此处删除了patchdata
-        dict_raw_col = {
-            'future': {},
-            'stock': {
-                'fund': self.gl.db_posttrddata['post_trade_raw_data_fund'],
-                'holding': self.gl.db_posttrddata['post_trade_raw_data_holding'],
-                'short_position': self.gl.db_posttrddata['post_trade_raw_data_short_position']
-            },
+        dict_rdct2col_posttrd_rawdata = {
+            'fund': self.gl.col_posttrd_rawdata_fund,
+            'holding': self.gl.col_posttrd_rawdata_holding,
+            'short_position': self.gl.col_posttrd_rawdata_short_position
         }
 
-        dict_fmt_col = {
-            'fund': self.gl.db_posttrddata['post_trade_formatted_data_fund'],
-            'holding': self.gl.db_posttrddata['post_trade_formatted_data_holding'],
-            'short_position': self.gl.db_posttrddata['post_trade_formatted_data_short_position']
+        dict_rdct2col_posttrd_fmtdata = {
+            'fund': self.gl.col_posttrd_fmtdata_fund,
+            'holding': self.gl.col_posttrd_fmtdata_holding,
+            'short_position': self.gl.col_posttrd_fmtdata_short_position
         }
 
-        dict_shtype2listFmtted = {'fund': [], 'holding': [], 'short_position': []}
+        # 两层： {rdct:{acctidbymxz: list_dicts}}
+        dict_rdct2list_dicts_posttrd_fmtdata = {'fund': [], 'holding': [], 'short_position': []}
 
-        # 1. 只下载一遍原始数据， 根据future; stock分成不同词典。
-        # 2. 通过dict_raw_col, 对每一种sheet type(fund....),都只下载一边，存成关于acctidbymxz的字典：
-        # 三层： {stock:{fund:{acctid: [准备format的list]}}}
-        dict3d_acctid2rawList = {'future': {}, 'stock': {}}
-        for general_type in dict_raw_col:
-            for sheet_type in dict_raw_col[general_type]:
-                col = dict_raw_col[general_type][sheet_type]
-                dict_acctid2rawList = {}
-                for _ in col.find({'DataDate': self.gl.str_last_trddate}):
-                    acctid = _["AcctIDByMXZ"]
-                    if acctid in dict_acctid2rawList:
-                        dict_acctid2rawList[acctid].append(_)
-                    else:
-                        dict_acctid2rawList[acctid] = [_]
-                dict3d_acctid2rawList[general_type].update({sheet_type: dict_acctid2rawList})
+        dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata = {'fund': {}, 'holding': {}, 'short_position': {}}
+        for rdct, col_posttrd_rawdata in dict_rdct2col_posttrd_rawdata.items():
+            for dict_posttrd_rawdata in col_posttrd_rawdata.find({'DataDate': self.gl.str_last_trddate}):
+                acctidbymxz = dict_posttrd_rawdata['AcctIDByMXZ']
+                dict_posttrd_rawdata['DataSourceType'] = self.dict_acctidbymxz2acctinfo['DataSourceType'][acctidbymxz]
+                if acctidbymxz in dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata[rdct]:
+                    dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata[rdct][acctidbymxz].append(dict_posttrd_rawdata)
+                else:
+                    dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata[rdct][acctidbymxz] = [dict_posttrd_rawdata]
 
-        for dict_acctinfo in self.gl.col_acctinfo.find(
-                {'DataDate': self.gl.str_last_trddate, 'DataDownloadMark': 1}
-        ):
+        for dict_acctinfo in self.gl.col_acctinfo.find({'DataDate': self.gl.str_last_trddate, 'DataDownloadMark': 1}):
             acctidbymxz = dict_acctinfo['AcctIDByMXZ']
             accttype = dict_acctinfo['AcctType']
-            general_type = {'f': 'future', 'c': 'stock', 'm': 'stock', 'o': 'stock'}[accttype]
 
-            for sheet_type in dict3d_acctid2rawList[general_type].keys():
-                if acctidbymxz in dict3d_acctid2rawList[general_type][sheet_type]:
-                    raw_list = dict3d_acctid2rawList[general_type][sheet_type][acctidbymxz]
+            for rdct in dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata.keys():
+                if acctidbymxz in dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata[rdct]:
+                    list_dicts_posttrd_rawdata = dict_rdct2dict_acctidbymxz2list_dicts_posttrd_rawdata[rdct][acctidbymxz]
+                    list_dicts_posttrd_fmtdata = self.formulate_raw_data(
+                        acctidbymxz, accttype, rdct, list_dicts_posttrd_rawdata
+                    )
+                    dict_rdct2list_dicts_posttrd_fmtdata[rdct] += list_dicts_posttrd_fmtdata
                 else:
                     continue
-                list_dicts_fmtted = self.formulate_raw_data(acctidbymxz, accttype, sheet_type, raw_list)
-                dict_shtype2listFmtted[sheet_type] += list_dicts_fmtted
 
-        for sheet_type in dict_shtype2listFmtted:
-            list_dicts_fmtted = dict_shtype2listFmtted[sheet_type]
-            target_collection = dict_fmt_col[sheet_type]
-            target_collection.delete_many({'DataDate': self.gl.str_last_trddate})
-            if list_dicts_fmtted:
-                target_collection.insert_many(list_dicts_fmtted)
+        for rdct in dict_rdct2list_dicts_posttrd_fmtdata.keys():
+            dict_rdct2col_posttrd_fmtdata[rdct].delete_many({'DataDate': self.gl.str_last_trddate})
+            if dict_rdct2list_dicts_posttrd_fmtdata[rdct]:
+                dict_rdct2col_posttrd_fmtdata[rdct].insert_many(dict_rdct2list_dicts_posttrd_fmtdata[rdct])
+
+        print('Update fmtdata finished.')
 
     def run(self):
         self.update_rawdata()

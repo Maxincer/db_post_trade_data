@@ -85,8 +85,6 @@ class Globals:
         )
         self.dict_fmtted_wssdata_last_trddate = df_fmtted_wssdata_last_trddate.set_index('WindCode').to_dict()
 
-
-
         # trade
         self.db_trade_data = self.server_mongodb['trade_data']
         self.col_trade_rawdata_fund = self.db_trade_data['trade_rawdata_fund']
