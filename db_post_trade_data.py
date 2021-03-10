@@ -1709,6 +1709,7 @@ class UpdatePostTradeData:
                     dict_posttrd_fmtdata['AcctIDByMXZ'],
                     dict_posttrd_fmtdata['SecurityID'],
                     dict_posttrd_fmtdata['SecurityIDSource'],
+                    dict_posttrd_fmtdata['SecurityType']
                 )
 
                 if tuple_acctidbymxz_secid_secidsrc in dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data:
@@ -1742,6 +1743,7 @@ class UpdatePostTradeData:
             acctidbymxz = tuple_acctidbymxz_secid_secidsrc[0]
             secid = tuple_acctidbymxz_secid_secidsrc[1]
             secidsrc = tuple_acctidbymxz_secid_secidsrc[2]
+            sectype = tuple_acctidbymxz_secid_secidsrc[3]
 
             list_dicts_posttrd_holding = dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc]['post_trade_formatted_data_holding']
             list_dicts_posttrd_short_position = dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc]['post_trade_formatted_data_short_position']
@@ -1767,6 +1769,7 @@ class UpdatePostTradeData:
                     'AcctIDByMXZ': acctidbymxz,
                     'SecurityID': secid,
                     'SecurityIDSource': secidsrc,
+                    'SecurityType': sectype,
                     'LongQty': longqty,
                     'ShortQty': shortqty,
                     'NetQty': longqty - shortqty,
