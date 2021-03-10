@@ -46,6 +46,7 @@ class UpdatePostTradeData:
         df_acctinfo = df_acctinfo.set_index('AcctIDByMXZ')
         self.dict_acctidbymxz2acctinfo = df_acctinfo.to_dict()
         self.list_warn = []
+        self.dict_secid2secidsrc = {}  # 记录特殊证券代码与代码源的关系
 
     def read_rawdata_from_trdclient(self, fpath, sheet_name, data_source_type, accttype, dict_dldfilter2acctidbymxz):
         """
@@ -1416,7 +1417,10 @@ class UpdatePostTradeData:
                     windcode = secid + windcode_suffix
                     sectype = self.gl.get_mingshi_sectype_from_code(windcode)
                     if sectype != 'IrrelevantItem':
-                        close = self.gl.dict_fmtted_wssdata_last_trddate['Close'][windcode]
+                        if windcode in self.gl.dict_fmtted_wssdata_last_trddate['Close']:
+                            close = self.gl.dict_fmtted_wssdata_last_trddate['Close'][windcode]
+                        else:
+                            close = 0
                     else:
                         close = 0
                     longamt = longqty * close
@@ -1693,9 +1697,93 @@ class UpdatePostTradeData:
 
         print('Update fmtdata finished.')
 
+    def update_col_posttrd_position(self):
+        list_dicts_posttrd_position = []
+        dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data = {}
+
+        for col_name in ['post_trade_formatted_data_holding', 'post_trade_formatted_data_short_position']:
+            for dict_posttrd_fmtdata in self.gl.db_posttrddata[col_name].find(
+                    {'DataDate': self.gl.str_last_trddate}, {'_id': 0}
+            ):
+                tuple_acctidbymxz_secid_secidsrc = (
+                    dict_posttrd_fmtdata['AcctIDByMXZ'],
+                    dict_posttrd_fmtdata['SecurityID'],
+                    dict_posttrd_fmtdata['SecurityIDSource'],
+                )
+
+                if tuple_acctidbymxz_secid_secidsrc in dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data:
+                    if col_name in dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc]:
+                        dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc][col_name].append(dict_posttrd_fmtdata)
+                    else:
+                        dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc].update({col_name: [dict_posttrd_fmtdata]})
+                else:
+                    if col_name == 'post_trade_formatted_data_holding':
+                        dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data.update(
+                            {
+                                tuple_acctidbymxz_secid_secidsrc: {
+                                    'post_trade_formatted_data_holding': [dict_posttrd_fmtdata],
+                                    'post_trade_formatted_data_short_position': [],
+                                }
+                            }
+                        )
+                    elif col_name == 'post_trade_formatted_data_holding':
+                        dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data.update(
+                            {
+                                tuple_acctidbymxz_secid_secidsrc: {
+                                    'post_trade_formatted_data_holding': [],
+                                    'post_trade_formatted_data_short_position': [dict_posttrd_fmtdata],
+                                }
+                            }
+                        )
+                    else:
+                        raise ValueError('Unknown col_name.')
+
+        for tuple_acctidbymxz_secid_secidsrc in dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data:
+            acctidbymxz = tuple_acctidbymxz_secid_secidsrc[0]
+            secid = tuple_acctidbymxz_secid_secidsrc[1]
+            secidsrc = tuple_acctidbymxz_secid_secidsrc[2]
+
+            list_dicts_posttrd_holding = dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc]['post_trade_formatted_data_holding']
+            list_dicts_posttrd_short_position = dict_tuple_acctidbymxz_secid_secidsrc2dict_col_name2data[tuple_acctidbymxz_secid_secidsrc]['post_trade_formatted_data_short_position']
+
+            longqty = 0
+            shortqty = 0
+            longamt = 0
+            shortamt = 0
+
+            for dict_posttrd_holding in list_dicts_posttrd_holding:
+                longqty += dict_posttrd_holding['LongQty']
+                longamt += dict_posttrd_holding['LongAmt']
+
+            for dict_posttrd_short_position in list_dicts_posttrd_short_position:
+                shortqty += dict_posttrd_short_position['ShortQty']
+                shortamt += dict_posttrd_short_position['ShortAmt']
+
+            netamt = longamt - shortamt
+
+            if longqty or shortqty:
+                dict_posttrd_position = {
+                    'DataDate': self.gl.str_last_trddate,
+                    'AcctIDByMXZ': acctidbymxz,
+                    'SecurityID': secid,
+                    'SecurityIDSource': secidsrc,
+                    'LongQty': longqty,
+                    'ShortQty': shortqty,
+                    'NetQty': longqty - shortqty,
+                    'LongAmt': longamt,
+                    'ShortAmt': shortamt,
+                    'NetAmt': netamt,
+                }
+                list_dicts_posttrd_position.append(dict_posttrd_position)
+
+        if list_dicts_posttrd_position:
+            self.gl.col_posttrd_position.delete_many({'DataDate': self.gl.str_last_trddate})
+            self.gl.col_posttrd_position.insert_many(list_dicts_posttrd_position)
+
     def run(self):
         self.update_rawdata()
         self.update_fmtdata()
+        self.update_col_posttrd_position()
         print(f'Upload post trade data finished at {datetime.now().strftime("%H:%M:%S")}')
 
 
