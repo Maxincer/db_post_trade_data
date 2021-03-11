@@ -304,7 +304,9 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_fund)
 
             elif data_source_type in ['gtja_pluto']:     # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -365,6 +367,8 @@ class UpdatePostTradeData:
 
             elif data_source_type in ['gf_tyt']:
                 fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -709,6 +713,8 @@ class UpdatePostTradeData:
 
             elif data_source_type in ['gf_tyt']:
                 fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -756,7 +762,7 @@ class UpdatePostTradeData:
                     'zxjt_xtpb', 'zhaos_xtpb', 'zhes_xtpb', 'hf_xtpb', 'gl_xtpb',
                     'swhy_xtpb', 'cj_xtpb', 'hengt_xtpb', 'zygj_xtpb'
                 ]:
-                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                     with codecs.open(fpath, 'rb', 'gbk') as f:
                         list_datalines = f.readlines()
                         if len(list_datalines) == 0:
@@ -808,7 +814,6 @@ class UpdatePostTradeData:
                                     if dict_secloan['fund_account'] == acctidbybroker:
                                         dict_secloan['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
                                         list_ret.append(dict_secloan)
-
 
                 elif data_source_type in ['gtja_pluto']:     # 有改动
                     fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
