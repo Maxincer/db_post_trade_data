@@ -46,6 +46,7 @@ class Globals:
         self.str_next_trddate = self.list_str_trdcalendar[idx_str_today + 1]
         self.str_last_last_trddate = self.list_str_trdcalendar[idx_str_today - 2]
         self.str_next_next_trddate = self.list_str_trdcalendar[idx_str_today + 2]
+        self.dt_last_trddate = datetime.strptime(self.str_last_trddate, '%Y%m%d')
 
         # 配置文件部分: basicinfo
         self.db_basicinfo = self.server_mongodb['basicinfo']

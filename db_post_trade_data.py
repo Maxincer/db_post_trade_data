@@ -11,6 +11,7 @@ Abbr:
     1. rdct, raw_data_content_type: content type of raw data, 依据源数据内容划分的数据表名， 特指:
         [fund, holding, order, short_position, public_security_loan, private_security_loan, jgd]
     2. kqzj,  可取资金
+    3. 交易数据文件中的<YYYYMMDD>代表交易的发生日期， 即T日， <YYYYMMDD+1>代表交易的发生日期的后一日， 即T+1日。
 
 Todo:
     1. post trade data, 程序 - 日期更改， 改两个文件: 1. 写入的脚本， 2.读取的脚本
@@ -174,11 +175,9 @@ class UpdatePostTradeData:
                 pass
 
             elif data_source_type in ['zx_wealthcats']:
-                fpath = (
-                    fpath
-                        .replace('<YYYY-MM-DD>', self.gl.dt_today.strftime('%Y-%m-%d'))
-                        .replace('<YYYYMMDD>', self.gl.str_today)
-                )
+                fpath = fpath.replace('<YYYY-MM-DD+1>', self.gl.dt_today.strftime('%Y-%m-%d'))
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+
                 with codecs.open(fpath, 'rb', 'utf-8-sig') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -198,7 +197,7 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_fund_wealthcats)
 
             elif data_source_type in ['db_wealthcats']:
-                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.str_today.strftime('%Y-%m-%d'))
+                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.dt_last_trddate.strftime('%Y-%m-%d'))
                 with codecs.open(fpath, 'rb', 'utf-8-sig') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -214,11 +213,12 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_fund_wealthcats)
 
             elif data_source_type in ['ax_jzpb']:
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
                 with open(fpath, encoding='ansi') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
-                        logger_expo.warning('读取空白文件%s'%fpath)
+                        logger_expo.warning('读取空白文件%s' % fpath)
                     else:
                         list_keys = list_datalines[0].strip().split(',')
                     for dataline in list_datalines[1:]:
@@ -233,7 +233,7 @@ class UpdatePostTradeData:
                 'zxjt_xtpb', 'zhaos_xtpb', 'zhes_xtpb', 'hf_xtpb', 'gl_xtpb',
                 'swhy_xtpb', 'cj_xtpb', 'hengt_xtpb', 'zygj_xtpb', 'dh_xtqmt'
             ]:
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -250,7 +250,9 @@ class UpdatePostTradeData:
 
             elif data_source_type in ['hait_ehfz_api']:   # 有改动
                 for acctidbybroker in dict_dldfilter2acctidbymxz:
-                    fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
+                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                    fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                     with codecs.open(fpath_, 'rb', 'gbk') as f:
                         list_datalines = f.readlines()
                         if len(list_datalines) == 0:
@@ -266,7 +268,9 @@ class UpdatePostTradeData:
 
             elif data_source_type in ['huat_matic_tsi']:    # 有改动
                 for acctidbybroker in dict_dldfilter2acctidbymxz:
-                    fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
+                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                    fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                     with codecs.open(fpath_, 'rb', encoding='gbk') as f:
                         list_datalines = f.readlines()
                         if len(list_datalines) == 0:
@@ -282,7 +286,9 @@ class UpdatePostTradeData:
                                     list_ret.append(dict_fund)
 
             elif data_source_type in ['gy_htpb', 'gs_htpb', 'gj_htpb']:    # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -314,7 +320,9 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_fund)
 
             elif data_source_type in ['yh_apama'] and accttype == 'c':  # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath) as f:
                     list_datalines = f.readlines()
                     list_keys = ['请求编号', '资金账号', '币种', '可用余额', '可取金额', '冻结金额', '总资产', '证券市值', '资金资产']
@@ -333,7 +341,9 @@ class UpdatePostTradeData:
                             logger_expo.warning('strange fund keys of yh_apama %s' % fpath)
 
             elif data_source_type in ['yh_apama'] and accttype == 'm':
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath) as f:
                     list_datalines = f.readlines()
                     list_keys = ['请求编号', '资金账号', '币种', '可用余额', '可取金额', '冻结金额', '总资产', '证券市值',
@@ -354,7 +364,7 @@ class UpdatePostTradeData:
                             logger_expo.warning('strange fund key of yh_apama %s'%fpath)
 
             elif data_source_type in ['gf_tyt']:
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -511,7 +521,8 @@ class UpdatePostTradeData:
                             list_ret.append(dict_rec_holding)
 
             elif data_source_type in ['zx_wealthcats']:
-                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.dt_today.strftime('%Y-%m-%d'))
+                fpath = fpath.replace('<YYYY-MM-DD+1>', self.gl.dt_today.strftime('%Y-%m-%d'))
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'utf-8-sig') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -533,7 +544,9 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_rec_holding)
 
             elif data_source_type in ['ax_jzpb']:     # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with open(fpath, encoding='ansi') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -552,7 +565,7 @@ class UpdatePostTradeData:
                 'dh_xtqmt', 'zxjt_xtpb', 'zhaos_xtpb', 'zhes_xtpb', 'hf_xtpb', 'gl_xtpb', 'swhy_xtpb',
                 'cj_xtpb', 'hengt_xtpb', 'zygj_xtpb'
             ]:
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -569,7 +582,9 @@ class UpdatePostTradeData:
 
             elif data_source_type in ['hait_ehfz_api']:   # 有改动
                 for acctidbybroker in dict_dldfilter2acctidbymxz:
-                    fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
+                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                    fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                     try:
                         with codecs.open(fpath_, 'rb', 'gbk') as f:
                             list_datalines = f.readlines()
@@ -591,7 +606,9 @@ class UpdatePostTradeData:
 
             elif data_source_type in ['huat_matic_tsi']:    # 有改动
                 for acctidbybroker in dict_dldfilter2acctidbymxz:
-                    fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
+                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                    fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                     try:
                         with codecs.open(fpath_, 'rb', encoding='gbk') as f:
                             list_datalines = f.readlines()
@@ -614,7 +631,9 @@ class UpdatePostTradeData:
                             logger_expo.error(e)
 
             elif data_source_type in ['gy_htpb', 'gs_htpb', 'gj_htpb']:    # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -646,7 +665,9 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_rec_holding)
 
             elif data_source_type in ['yh_apama'] and accttype == 'm':  # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath) as f:
                     list_datalines = f.readlines()
                     list_keys = ['请求编号', '资金账号', '证券代码', '交易市场', '股份可用', '当前持仓', '持仓成本', '最新价',
@@ -666,7 +687,9 @@ class UpdatePostTradeData:
                             logger_expo.warning('strange holidng keys of yh_apama %s'%fpath)
 
             elif data_source_type in ['yh_apama'] and accttype == 'c':  # 有改动
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath) as f:
                     list_datalines = f.readlines()
                     list_keys = ['请求编号', '资金账号', '证券代码', '交易市场', '股份可用', '当前持仓', '持仓成本', '最新价',
@@ -685,7 +708,7 @@ class UpdatePostTradeData:
                             logger_expo.warning('strange holidng keys of yh_apama %s'%fpath)
 
             elif data_source_type in ['gf_tyt']:
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -750,49 +773,42 @@ class UpdatePostTradeData:
 
                 elif data_source_type in ['hait_ehfz_api']:
                     for acctidbybroker in dict_dldfilter2acctidbymxz:
-                        try:
-                            fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
-                            with codecs.open(fpath_, 'rb', 'gbk') as f:
-                                list_datalines = f.readlines()
-                                if len(list_datalines) == 0:
-                                    logger_expo.warning('读取空白文件%s'%fpath_)
-                                    continue
-                                else:
-                                      list_keys = list_datalines[0].strip().split(',')
-                                for dataline in list_datalines[1:]:
-                                    list_values = dataline.strip().split(',')
-                                    if len(list_values) == len(list_keys):
-                                        dict_rec_secloan = dict(zip(list_keys, list_values))
-                                        dict_rec_secloan['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
-                                        list_ret.append(dict_rec_secloan)
-                        except FileNotFoundError as e:
-                            e = str(e)
-                            if e not in self.list_warn:
-                                self.list_warn.append(e)
-                                logger_expo.error(e)
+                        fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                        fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
+                        with codecs.open(fpath_, 'rb', 'gbk') as f:
+                            list_datalines = f.readlines()
+                            if len(list_datalines) == 0:
+                                logger_expo.warning('读取空白文件%s'%fpath_)
+                                continue
+                            else:
+                                  list_keys = list_datalines[0].strip().split(',')
+                            for dataline in list_datalines[1:]:
+                                list_values = dataline.strip().split(',')
+                                if len(list_values) == len(list_keys):
+                                    dict_rec_secloan = dict(zip(list_keys, list_values))
+                                    dict_rec_secloan['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
+                                    list_ret.append(dict_rec_secloan)
 
                 elif data_source_type in ['huat_matic_tsi']:
                     for acctidbybroker in dict_dldfilter2acctidbymxz:
-                        fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
-                        try:
-                            with codecs.open(fpath_, 'rb', encoding='gbk') as f:
-                                list_datalines = f.readlines()
-                                if len(list_datalines) == 0:
-                                    logger_expo.warning('读取空白文件%s'%fpath_)
-                                else:
-                                      list_keys = list_datalines[0].strip().split(',')
-                                for dataline in list_datalines[1:]:
-                                    list_values = dataline.strip().split(',')
-                                    if len(list_values) == len(list_keys):
-                                        dict_secloan = dict(zip(list_keys, list_values))
-                                        if dict_secloan['fund_account'] == acctidbybroker:
-                                            dict_secloan['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
-                                            list_ret.append(dict_secloan)
-                        except FileNotFoundError as e:
-                            e = str(e)
-                            if e not in self.list_warn:
-                                self.list_warn.append(e)
-                                logger_expo.error(e)
+                        fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                        fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
+                        with codecs.open(fpath_, 'rb', encoding='gbk') as f:
+                            list_datalines = f.readlines()
+                            if len(list_datalines) == 0:
+                                logger_expo.warning('读取空白文件%s'%fpath_)
+                            else:
+                                  list_keys = list_datalines[0].strip().split(',')
+                            for dataline in list_datalines[1:]:
+                                list_values = dataline.strip().split(',')
+                                if len(list_values) == len(list_keys):
+                                    dict_secloan = dict(zip(list_keys, list_values))
+                                    if dict_secloan['fund_account'] == acctidbybroker:
+                                        dict_secloan['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
+                                        list_ret.append(dict_secloan)
+
 
                 elif data_source_type in ['gtja_pluto']:     # 有改动
                     fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
@@ -819,7 +835,7 @@ class UpdatePostTradeData:
             # 先做这几个有secloan的（不然order没意义）:
             if data_source_type in ['zxjt_xtpb', 'zhaos_xtpb', 'zhes_xtpb', 'hf_xtpb', 'gl_xtpb',
                                     'swhy_xtpb', 'cj_xtpb', 'hengt_xtpb', 'zygj_xtpb', 'dh_xtqmt']:
-                fpath = fpath.replace('YYYYMMDD', self.gl.str_today)
+                fpath = fpath.replace('YYYYMMDD', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -833,48 +849,43 @@ class UpdatePostTradeData:
                             if dict_rec_order['资金账号'] in dict_dldfilter2acctidbymxz:
                                 dict_rec_order['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[dict_rec_order['资金账号']]
                                 list_ret.append(dict_rec_order)
+
             if data_source_type in ['hait_ehfz_api']:
                 for acctidbybroker in dict_dldfilter2acctidbymxz:
-                    try:
-                        fpath_ = fpath.replace('YYYYMMDD', self.gl.str_today).replace('<ID>', acctidbybroker)
-                        with codecs.open(fpath_, 'rb', 'gbk') as f:
-                            list_datalines = f.readlines()
-                            if len(list_datalines) == 0:
-                                logger_expo.warning('读取空白文件%s'%fpath_)
-                            else:
-                                  list_keys = list_datalines[0].strip().split(',')
-                            for dataline in list_datalines[1:]:
-                                list_values = dataline.strip().split(',')
-                                if len(list_values) == len(list_keys):
-                                    dict_rec_order = dict(zip(list_keys, list_values))
-                                    dict_rec_order['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
-                                    list_ret.append(dict_rec_order)
-                    except FileNotFoundError as e:
-                        e = str(e)
-                        if e not in self.list_warn:
-                            self.list_warn.append(e)
-                            logger_expo.error(e)
+                    fpath = fpath.replace('YYYYMMDD', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                    fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
+                    with codecs.open(fpath_, 'rb', 'gbk') as f:
+                        list_datalines = f.readlines()
+                        if len(list_datalines) == 0:
+                            logger_expo.warning('读取空白文件%s'%fpath_)
+                        else:
+                              list_keys = list_datalines[0].strip().split(',')
+                        for dataline in list_datalines[1:]:
+                            list_values = dataline.strip().split(',')
+                            if len(list_values) == len(list_keys):
+                                dict_rec_order = dict(zip(list_keys, list_values))
+                                dict_rec_order['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
+                                list_ret.append(dict_rec_order)
+
             elif data_source_type in ['huat_matic_tsi']:  # 有改动
                 for acctidbybroker in dict_dldfilter2acctidbymxz:
-                    try:
-                        fpath_ = fpath.replace('<YYYYMMDD>', self.gl.str_today).replace('<ID>', acctidbybroker)
-                        with codecs.open(fpath_, 'rb', encoding='gbk') as f:
-                            list_datalines = f.readlines()
-                            if len(list_datalines) == 0:
-                                logger_expo.warning('读取空白文件%s'%fpath_)
-                            else:
-                                  list_keys = list_datalines[0].strip().split(',')
-                            for dataline in list_datalines[1:]:
-                                list_values = dataline.strip().split(',')
-                                if len(list_values) == len(list_keys):
-                                    dict_order = dict(zip(list_keys, list_values))
-                                    dict_order['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
-                                    list_ret.append(dict_order)
-                    except FileNotFoundError as e:
-                        e = str(e)
-                        if e not in self.list_warn:
-                            self.list_warn.append(e)
-                            logger_expo.error(e)
+                    fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate).replace('<ID>', acctidbybroker)
+                    fpath_ = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
+                    with codecs.open(fpath_, 'rb', encoding='gbk') as f:
+                        list_datalines = f.readlines()
+                        if len(list_datalines) == 0:
+                            logger_expo.warning('读取空白文件%s'%fpath_)
+                        else:
+                              list_keys = list_datalines[0].strip().split(',')
+                        for dataline in list_datalines[1:]:
+                            list_values = dataline.strip().split(',')
+                            if len(list_values) == len(list_keys):
+                                dict_order = dict(zip(list_keys, list_values))
+                                dict_order['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[acctidbybroker]
+                                list_ret.append(dict_order)
+
             elif data_source_type in ['gtja_pluto']:     # 有改动
                 fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
@@ -891,7 +902,9 @@ class UpdatePostTradeData:
                                 dict_rec_order['AcctIDByMXZ'] = dict_dldfilter2acctidbymxz[dict_rec_order['单元序号']]
                                 list_ret.append(dict_rec_order)
             elif data_source_type in ['yh_apama']:    # 成交明细不是委托明细
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath) as f:
                     list_datalines = f.readlines()
                     list_keys = ['请求编号', '资金账号', '证券代码', '交易市场', '委托序号', '买卖方向', '股东号', '成交时间',
@@ -910,7 +923,8 @@ class UpdatePostTradeData:
                             logger_expo.warning('strange order keys of yh_apama %s' % fpath)
 
             elif data_source_type in ['ax_jzpb']:
-                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
                 with open(fpath, encoding='ansi') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -928,7 +942,8 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_rec_order)
 
             elif data_source_type in ['zx_wealthcats']:
-                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.dt_today.strftime('%Y-%m-%d'))
+                fpath = fpath.replace('<YYYY-MM-DD+1>', self.gl.dt_today.strftime('%Y-%m-%d'))
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'utf-8-sig') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -944,7 +959,9 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_rec_order)
 
             elif data_source_type in ['gy_htpb', 'gs_htpb', 'gj_htpb']:    # 有改动
-                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYYMMDD>', self.gl.str_last_trddate)
+                fpath = fpath.replace('<YYYYMMDD+1>', self.gl.str_today)
+
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
@@ -960,7 +977,7 @@ class UpdatePostTradeData:
                                 list_ret.append(dict_rec_holding)
 
             elif data_source_type in ['gf_tyt']:
-                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.str_today)
+                fpath = fpath.replace('<YYYY-MM-DD>', self.gl.str_last_trddate)
                 with codecs.open(fpath, 'rb', 'gbk') as f:
                     list_datalines = f.readlines()
                     if len(list_datalines) == 0:
